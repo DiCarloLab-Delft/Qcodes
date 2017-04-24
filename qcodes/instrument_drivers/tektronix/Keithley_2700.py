@@ -175,6 +175,12 @@ class Keithley_2700(VisaInstrument):
                            get_cmd=':DATA:FRESH?',
                            get_parser=float)
 
+        self.add_parameter('Res4',
+                           unit='Ohm',
+                           label='Resistance',
+                           get_cmd=':MEAS:FRES?',
+                           get_parser=float)
+
         if reset:
             self.reset()
         else:
