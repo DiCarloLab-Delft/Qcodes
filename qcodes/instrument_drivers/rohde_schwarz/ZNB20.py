@@ -4,7 +4,6 @@ from cmath import phase
 import numpy as np
 from qcodes import MultiParameter, Parameter
 
-
 class ZNB20(VisaInstrument):
 
     """
@@ -200,3 +199,12 @@ def VISA_str_to_int(message):
 
 def VISA_str_to_float(message):
     return float(message.strip('\\n'))
+
+# Ensuring backwards compatibility
+
+
+
+print('N.B. This is the version by Stefano, there exists another version of'
+      ' the ZNB20 in the QCoDeS base')
+
+# from .ZNB import ZNB as ZNB20
