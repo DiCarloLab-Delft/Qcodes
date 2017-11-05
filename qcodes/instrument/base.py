@@ -185,14 +185,17 @@ class InstrumentBase(Metadatable, DelegateAttributes):
 
         snap['parameters'] = {}
         for name, param in self.parameters.items():
-            update = update
             if params_to_skip_update and name in params_to_skip_update:
-                update = False
-            try:
-                snap['parameters'][name] = param.snapshot(update=update)
-            except:
-                logging.info("Snapshot: Could not update parameter: {}".format(name))
-                snap['parameters'][name] = param.snapshot(update=False)
+                update_par = False
+            else:
+                update_par = update
+            # Note MAR 28/9/2017 this else is not yet in QCoDeS master
+            # see issue #759.
+                try:
+                    snap['parameters'][name] = param.snapshot(update=update_par)
+                except:
+                    logging.info("Snapshot: Could not update parameter: {}".format(name))
+                    snap['parameters'][name] = param.snapshot(update=False)
         for attr in set(self._meta_attrs):
             if hasattr(self, attr):
                 snap[attr] = getattr(self, attr)
