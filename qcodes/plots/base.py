@@ -4,7 +4,7 @@ Live plotting in Jupyter notebooks
 
 
 class BasePlot:
-
+    latest_plot = None
     """
     Auto-updating plot connected to a Jupyter notebook
 
@@ -19,10 +19,14 @@ class BasePlot:
     """
 
     def __init__(self, interval=1, data_keys='xyz'):
+        BasePlot.latest_plot = self
         self.data_keys = data_keys
         self.traces = []
         self.data_updaters = set()
         self.interval = interval
+        self.standardunits = ['V', 's', 'J', 'W', 'm', 'eV', 'A', 'K', 'g',
+                              'Hz', 'rad', 'T', 'H', 'F', 'Pa', 'C', 'Ω', 'Ohm',
+                              'S']
 
     def clear(self):
         """

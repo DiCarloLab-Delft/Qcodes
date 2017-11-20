@@ -87,7 +87,7 @@ class Bool(Validator):
         pass
 
     def validate(self, value, context=''):
-        if not isinstance(value, bool):
+        if not isinstance(value, bool) and not isinstance(value, np.bool8):
             raise TypeError(
                 '{} is not Boolean; {}'.format(repr(value), context))
 
@@ -134,7 +134,7 @@ class Strings(Validator):
 class Numbers(Validator):
     """
     Args:
-        min_value (Optional[Union[float, int]):  Min value allowed, default inf
+        min_value (Optional[Union[float, int]):  Min value allowed, default -inf
         max_value:  (Optional[Union[float, int]): Max  value allowed, default inf
 
     Raises:
@@ -216,6 +216,27 @@ class Ints(Validator):
         minv = self._min_value if self._min_value > -BIGINT else None
         maxv = self._max_value if self._max_value < BIGINT else None
         return '<Ints{}>'.format(range_str(minv, maxv, 'v'))
+
+class PermissiveInts(Ints):
+    """
+    requires an integer or a float close to an integer
+    optional parameters min_value and max_value enforce
+    min_value <= value <= max_value
+    Note that you probably always want to use this with a
+    set_parser that converts the float repr to an actual int
+    """
+    def validate(self, value, context=''):
+        if isinstance(value, (float, np.floating)):
+            intrepr = int(round(value))
+            remainder = abs(value - intrepr)
+            if remainder < 1e-05:
+                castvalue = intrepr
+            else:
+                raise TypeError('{} is not an int or close to an int'
+                                '; {}'.format(repr(value), context))
+        else:
+            castvalue = value
+        super().validate(castvalue, context=context)
 
 
 class Enum(Validator):
@@ -420,3 +441,37 @@ class Lists(Validator):
         if not isinstance(self._elt_validator, Anything):
             for elt in value:
                 self._elt_validator.validate(elt)
+
+
+class Callable(Validator):
+    """
+    Validator for callables such as functions.
+    """
+    def __init__(self):
+        # exists only to overwrite parent class
+        pass
+
+    def validate(self, value, context=''):
+        if not callable(value):
+            raise TypeError(
+                '{} is not a callable; {}'.format(repr(value), context))
+
+    def __repr__(self):
+        return '<Callable>'
+
+
+class Dict(Validator):
+    """
+    Validator for dictionaries
+    """
+    def __init__(self):
+        # exists only to overwrite parent class
+        pass
+
+    def validate(self, value, context=''):
+        if not isinstance(value, dict):
+            raise TypeError(
+                '{} is not a dictionary; {}'.format(repr(value), context))
+
+    def __repr__(self):
+        return '<Dict>'

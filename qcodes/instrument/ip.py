@@ -1,8 +1,10 @@
 """Ethernet instrument driver class based on sockets."""
 import socket
+import logging
 
 from .base import Instrument
 
+log = logging.getLogger(__name__)
 
 class IPInstrument(Instrument):
 
@@ -36,9 +38,9 @@ class IPInstrument(Instrument):
     """
 
     def __init__(self, name, address=None, port=None, timeout=5,
-                 terminator='\n', persistent=True, write_confirmation=True,
+                 terminator='\n', persistent=True, write_confirmation=True, testing=False,
                  **kwargs):
-        super().__init__(name, **kwargs)
+        super().__init__(name, testing=testing, **kwargs)
 
         self._address = address
         self._port = port
@@ -88,13 +90,24 @@ class IPInstrument(Instrument):
         else:
             self._disconnect()
 
+    def flush_connection(self):
+        if not self._testing:
+            self._recv()
+
     def _connect(self):
+        if self._testing:
+            return
+
         if self._socket is not None:
             self._disconnect()
 
-        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._socket.connect((self._address, self._port))
-        self.set_timeout(self._timeout)
+        try:
+            self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._socket.connect((self._address, self._port))
+            self.set_timeout(self._timeout)
+        except ConnectionRefusedError:
+            self._socket.close()
+            self._socket = None
 
     def _disconnect(self):
         if getattr(self, '_socket', None) is None:
@@ -128,10 +141,14 @@ class IPInstrument(Instrument):
 
     def _send(self, cmd):
         data = cmd + self._terminator
-        self._socket.send(data.encode())
+        self._socket.sendall(data.encode())
 
     def _recv(self):
-        return self._socket.recv(self._buffer_size).decode()
+        result = self._socket.recv(self._buffer_size)
+        if result == b'':
+            log.warning("Got empty response from Socket recv() "
+                        "Connection broken.")
+        return result.decode()
 
     def close(self):
         """Disconnect and irreversibly tear down the instrument."""
