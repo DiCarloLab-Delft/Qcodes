@@ -41,8 +41,10 @@ class AMI_Magnet_PCS_SN14768(Instrument):
 
     Initialization when the previous measurement did not have the magnet is
     a bit awkward. The driver checks the last measurement for the value and if
-    this does not exists it fails. The current workaround hack is just to return
-    the known value.
+    this does not exists it fails. To do the first initialization it is necessary
+    to start everything up while having the 'get_field' function return 0 always.
+    Make a fake folder with the name ''. Then exit and reinitialize with the
+    'get_field' function returning what it is supposed to.
 
     '''
 
@@ -241,6 +243,7 @@ class AMI_Magnet_PCS_SN14768(Instrument):
                 return 'field at ' +str(field)+' T'
 
     def get_field(self):
+        # return 0 # Only add this line when doing the first initialization!
         if self.switch_state()=='SuperConducting':
             ## get the persistent field from the HDF5 file
 
