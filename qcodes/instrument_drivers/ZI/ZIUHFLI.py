@@ -2,6 +2,9 @@ import time
 import logging
 import numpy as np
 from functools import partial
+from math import sqrt
+
+from typing import Callable, List, Union
 
 try:
     import zhinst.utils
@@ -11,13 +14,97 @@ except ImportError:
                          download and installation instructions.
                       ''')
 
-from qcodes.instrument.parameter import ManualParameter
 from qcodes.instrument.parameter import MultiParameter
 from qcodes.instrument.base import Instrument
+from qcodes.instrument.channel import InstrumentChannel, ChannelList
 from qcodes.utils import validators as vals
 
 log = logging.getLogger(__name__)
 
+class AUXOutputChannel(InstrumentChannel):
+
+    def __init__(self, parent: 'ZIUHFLI', name: str, channum: int) -> None:
+        super().__init__(parent, name)
+
+        # TODO better validations of parameters
+        self.add_parameter('scale',
+                           label='scale',
+                           unit='',
+                           get_cmd=partial(self._parent._getter, 'auxouts',
+                                           channum - 1, 1, 'scale'),
+                           set_cmd=partial(self._parent._setter, 'auxouts',
+                                           channum - 1, 1, 'scale'),
+                           vals=vals.Numbers()
+                           )
+
+        self.add_parameter('preoffset',
+                           label='preoffset',
+                           unit='',
+                           get_cmd=partial(self._parent._getter, 'auxouts',
+                                           channum - 1, 1, 'preoffset'),
+                           set_cmd=partial(self._parent._setter, 'auxouts',
+                                           channum - 1, 1, 'preoffset'),
+                           vals=vals.Numbers()
+                           )
+        self.add_parameter('offset',
+                           label='offset',
+                           unit='',
+                           get_cmd=partial(self._parent._getter, 'auxouts',
+                                           channum - 1, 1, 'offset'),
+                           set_cmd=partial(self._parent._setter, 'auxouts',
+                                           channum - 1, 1, 'offset'),
+                           vals=vals.Numbers()
+                           )
+        self.add_parameter('limitlower',
+                           label='Lower limit',
+                           unit='',
+                           get_cmd=partial(self._parent._getter, 'auxouts',
+                                           channum - 1, 1, 'limitlower'),
+                           set_cmd=partial(self._parent._setter, 'auxouts',
+                                           channum - 1, 1, 'limitlower'),
+                           vals=vals.Numbers()
+                           )
+
+        self.add_parameter('limitupper',
+                           label='Upper limit',
+                           unit='',
+                           get_cmd=partial(self._parent._getter, 'auxouts',
+                                           channum - 1, 1, 'limitupper'),
+                           set_cmd=partial(self._parent._setter, 'auxouts',
+                                           channum - 1, 1, 'limitupper'),
+                           vals=vals.Numbers()
+                           )
+
+        # TODO the validator does not catch that there are only
+        # 2 valid output channels for AU types
+        self.add_parameter('channel',
+                           label='Channel',
+                           unit='',
+                           get_cmd=partial(self._parent._getter, 'auxouts',
+                                           channum - 1, 0, 'demodselect'),
+                           set_cmd=partial(self._parent._setter, 'auxouts',
+                                           channum - 1, 0, 'demodselect'),
+                           get_parser=lambda x: x+1,
+                           set_parser=lambda x: x-1,
+                           vals=vals.Ints(0,7)
+                           )
+
+        outputvalmapping = {'Demod X': 0,
+                            'Demod Y': 1,
+                            'Demod R': 2,
+                            'Demod THETA': 3,
+                            'AU Cartesian': 7,
+                            'AU Polar': 8}
+
+        self.add_parameter('output',
+                           label='Output',
+                           unit='',
+                           get_cmd=partial(self._parent._getter, 'auxouts',
+                                           channum - 1, 0, 'outputselect'),
+                           set_cmd=partial(self._parent._setter, 'auxouts',
+                                           channum - 1, 0, 'outputselect'),
+                           val_mapping=outputvalmapping
+                           )
 
 class Sweep(MultiParameter):
     """
@@ -112,7 +199,7 @@ class Sweep(MultiParameter):
         # TODO: support non-sequential sweep mode
         if not sweepdict['scan'] == 0:
             raise NotImplementedError('Only sequential scanning is supported.')
-        if sweepdict['xmapping'] == 'lin':
+        if sweepdict['xmapping'] == 0:
             sw = tuple(np.linspace(start, stop, npts))
         else:
             logstart = np.log10(start)
@@ -251,6 +338,20 @@ class Scope(MultiParameter):
         # They are updated via build_scope.
         super().__init__(name, names=('',), shapes=((1,),), **kwargs)
         self._instrument = instrument
+        self._scopeactions = []  # list of callables
+
+    def add_post_trigger_action(self, action: Callable) -> None:
+        """
+        Add an action to be performed immediately after the trigger
+        has been armed. The action must be a callable taking zero
+        arguments
+        """
+        if action not in self._scopeactions:
+            self._scopeactions.append(action)
+
+    @property
+    def post_trigger_actions(self) -> List[Callable]:
+        return self._scopeactions
 
     def prepare_scope(self):
         """
@@ -290,6 +391,38 @@ class Scope(MultiParameter):
                       'AU Cartesian 2': 'arb. un',
                       'AU Polar 1': 'arb. un.',
                       'AU Polar 2': 'arb. un.',
+                      'Demod 1 X': 'V',
+                      'Demod 1 Y': 'V',
+                      'Demod 1 R': 'V',
+                      'Demod 1 Phase':  '°',
+                      'Demod 2 X': 'V',
+                      'Demod 2 Y': 'V',
+                      'Demod 2 R': 'V',
+                      'Demod 2 Phase': '°',
+                      'Demod 3 X': 'V',
+                      'Demod 3 Y': 'V',
+                      'Demod 3 R': 'V',
+                      'Demod 3 Phase': '°',
+                      'Demod 4 X': 'V',
+                      'Demod 4 Y': 'V',
+                      'Demod 4 R': 'V',
+                      'Demod 4 Phase': '°',
+                      'Demod 5 X': 'V',
+                      'Demod 5 Y': 'V',
+                      'Demod 5 R': 'V',
+                      'Demod 5 Phase': '°',
+                      'Demod 6 X': 'V',
+                      'Demod 6 Y': 'V',
+                      'Demod 6 R': 'V',
+                      'Demod 6 Phase': '°',
+                      'Demod 7 X': 'V',
+                      'Demod 7 Y': 'V',
+                      'Demod 7 R': 'V',
+                      'Demod 7 Phase': '°',
+                      'Demod 8 X': 'V',
+                      'Demod 8 Y': 'V',
+                      'Demod 8 R': 'V',
+                      'Demod 8 Phase': '°',
                       }
 
         #TODO: what are good names?
@@ -309,7 +442,40 @@ class Scope(MultiParameter):
                       'AU Cartesian 2': 'AU Cartesian 2',
                       'AU Polar 1': 'AU Polar 1',
                       'AU Polar 2': 'AU Polar 2',
+                      'Demod 1 X': 'Demodulator 1 X',
+                      'Demod 1 Y': 'Demodulator 1 Y',
+                      'Demod 1 R': 'Demodulator 1 R',
+                      'Demod 1 Phase':  'Demodulator 1 Phase',
+                      'Demod 2 X': 'Demodulator 2 X',
+                      'Demod 2 Y': 'Demodulator 2 Y',
+                      'Demod 2 R': 'Demodulator 2 R',
+                      'Demod 2 Phase': 'Demodulator 2 Phase',
+                      'Demod 3 X': 'Demodulator 3 X',
+                      'Demod 3 Y': 'Demodulator 3 Y',
+                      'Demod 3 R': 'Demodulator 3 R',
+                      'Demod 3 Phase': 'Demodulator 3 Phase',
+                      'Demod 4 X': 'Demodulator 4 X',
+                      'Demod 4 Y': 'Demodulator 4 Y',
+                      'Demod 4 R': 'Demodulator 4 R',
+                      'Demod 4 Phase': 'Demodulator 4 Phase',
+                      'Demod 5 X': 'Demodulator 5 X',
+                      'Demod 5 Y': 'Demodulator 5 Y',
+                      'Demod 5 R': 'Demodulator 5 R',
+                      'Demod 5 Phase': 'Demodulator 5 Phase',
+                      'Demod 6 X': 'Demodulator 6 X',
+                      'Demod 6 Y': 'Demodulator 6 Y',
+                      'Demod 6 R': 'Demodulator 6 R',
+                      'Demod 6 Phase': 'Demodulator 6 Phase',
+                      'Demod 7 X': 'Demodulator 7 X',
+                      'Demod 7 Y': 'Demodulator 7 Y',
+                      'Demod 7 R': 'Demodulator 7 R',
+                      'Demod 7 Phase': 'Demodulator 7 Phase',
+                      'Demod 8 X': 'Demodulator 8 X',
+                      'Demod 8 Y': 'Demodulator 8 Y',
+                      'Demod 8 R': 'Demodulator 8 R',
+                      'Demod 8 Phase': 'Demodulator 8 Phase',
                       }
+
         # Make the basic setpoints (the x-axis)
         duration = params['scope_duration'].get()
         delay = params['scope_trig_delay'].get()
@@ -348,6 +514,9 @@ class Scope(MultiParameter):
             ValueError: If the scope has not been prepared by running the
                 prepare_scope function.
         """
+        t_start = time.monotonic()
+        log.info('Scope get method called')
+
         if not self._instrument.scope_correctly_built:
             raise ValueError('Scope not properly prepared. Please run '
                              'prepare_scope before measuring.')
@@ -380,45 +549,81 @@ class Scope(MultiParameter):
         meas_time = segs*(params['scope_duration'].get()+deadtime)+1
         npts = params['scope_length'].get()
 
-        # Create a new scopeModule instance (TODO: Why a new instance?)
-        scope = self._instrument.daq.scopeModule()
-
-        # Subscribe to the relevant... publisher?
-        scope.subscribe('/{}/scopes/0/wave'.format(self._instrument.device))
-
-        # Start the scope triggering/acquiring
-        params['scope_runstop'].set('run')
-
-        log.info('[*] Starting ZI scope acquisition.')
-        # Start something... hauling data from the scopeModule?
-        scope.execute()
-
-        starttime = time.time()
+        zi_error = True
+        error_counter = 0
+        num_retries = 10
         timedout = False
+        while (zi_error or timedout) and error_counter < num_retries:
+            # one shot per trigger. This needs to be set every time
+            # a the scope is enabled as below using scope_runstop
+            try:
+                # we wrap this in try finally to ensure that
+                # scope.finish is always called even if the
+                # measurement is interrupted
+                self._instrument.daq.setInt('/{}/scopes/0/single'.format(self._instrument.device), 1)
 
-        while scope.progress() < 1:
-            time.sleep(0.1)  # This while+sleep is how ZI engineers do it
-            if (time.time()-starttime) > meas_time:
-                scope.finish()  # Force break the acquisition
-                timedout = True
-                log.warning('[-] ZI Scope acquisition did not finish correctly')
-                break
 
-        # Stop the scope from running
-        params['scope_runstop'].set('stop')
+                scope = self._instrument.scope
+                scope.set('scopeModule/clearhistory', 1)
 
-        if not timedout:
-            log.info('[+] ZI scope acquisition completed OK')
-            rawdata = scope.read()
-            data = self._scopedataparser(rawdata, self._instrument.device,
-                                         npts, segs, channels)
-        else:
-            rawdata = None
-            data = (None, None)
+                # Start the scope triggering/acquiring
+                # set /dev/scopes/0/enable to 1
+                params['scope_runstop'].set('run')
 
-        # kill the scope instance
-        scope.clear()
+                self._instrument.daq.sync()
 
+                log.debug('Starting ZI scope acquisition.')
+                # Start something... hauling data from the scopeModule?
+                scope.execute()
+
+                # Now perform actions that may produce data, e.g. running an AWG
+                for action in self._scopeactions:
+                    action()
+
+                starttime = time.time()
+                timedout = False
+
+                progress = scope.progress()
+                while progress < 1:
+                    log.debug('Scope progress is {}'.format(progress))
+                    progress = scope.progress()
+                    time.sleep(0.1)  # This while+sleep is how ZI engineers do it
+                    if (time.time()-starttime) > 20*meas_time+1:
+                        timedout = True
+                        break
+                metadata = scope.get("scopeModule/*")
+                zi_error = bool(metadata['error'][0])
+
+                # Stop the scope from running
+                params['scope_runstop'].set('stop')
+
+                if not (timedout or zi_error):
+                    log.info('[+] ZI scope acquisition completed OK')
+                    rawdata = scope.read()
+                    if 'error' in rawdata:
+                        zi_error = bool(rawdata['error'][0])
+                    data = self._scopedataparser(rawdata, self._instrument.device,
+                                                 npts, segs, channels)
+                else:
+                    log.warning('[-] ZI scope acquisition attempt {} '
+                                'failed, Timeout: {}, Error: {}, '
+                                'retrying'.format(error_counter, timedout, zi_error))
+                    rawdata = None
+                    data = (None, None)
+                    error_counter += 1
+
+                if error_counter >= num_retries:
+                    log.error('[+] ZI scope acquisition failed, maximum number'
+                              'of retries performed. No data returned')
+                    raise RuntimeError('[+] ZI scope acquisition failed, maximum number'
+                              'of retries performed. No data returned')
+            finally:
+                # cleanup and make ready for next scope acquisition
+                scope.finish()
+
+        t_stop = time.monotonic()
+        log.info('scope get method returning after {} s'.format(t_stop -
+                                                                t_start))
         return data
 
     @staticmethod
@@ -465,15 +670,13 @@ class ZIUHFLI(Instrument):
         * Add zoom-FFT
     """
 
-    def __init__(self, name, device_ID, **kwargs):
+    def __init__(self, name: str, device_ID: str, **kwargs) -> None:
         """
         Create an instance of the instrument.
 
         Args:
             name (str): The internal QCoDeS name of the instrument
             device_ID (str): The device name as listed in the web server.
-            api_level (int): Compatibility mode of the API interface. Must be 5
-              for the UHF.
         """
 
         super().__init__(name, **kwargs)
@@ -486,7 +689,7 @@ class ZIUHFLI(Instrument):
         self.sweeper = self.daq.sweep()
         self.sweeper.set('sweep/device', self.device)
         self.scope = self.daq.scopeModule()
-        
+        self.scope.subscribe('/{}/scopes/0/wave'.format(self.device))
         ########################################
         # INSTRUMENT PARAMETERS
 
@@ -628,6 +831,26 @@ class ZIUHFLI(Instrument):
                                vals=vals.Enum(*list(dmtrigs.keys()))
                                )
 
+            self.add_parameter('demod{}_sample'.format(demod),
+                               label='Demod sample',
+                               get_cmd=partial(self._getter, 'demods',
+                                               demod - 1, 2, 'sample'),
+                               snapshot_value=False
+                               )
+
+            for demod_param in ['x', 'y', 'R', 'phi']:
+                if demod_param in ('x', 'y', 'R'):
+                    unit = 'V'
+                else:
+                    unit = 'deg'
+                self.add_parameter('demod{}_{}'.format(demod, demod_param),
+                                   label='Demod {} {}'.format(demod, demod_param),
+                                   get_cmd=partial(self._get_demod_sample,
+                                                   demod - 1, demod_param),
+                                   snapshot_value=False,
+                                   unit=unit
+                                   )
+
         ########################################
         # SIGNAL INPUTS
 
@@ -714,7 +937,7 @@ class ZIUHFLI(Instrument):
                                 unit='V')
 
             self.add_parameter('signal_output{}_ampdef'.format(sigout),
-                                parameter_class=ManualParameter,
+                                get_cmd=None, set_cmd=None,
                                 initial_value='Vpk',
                                 label="Signal output amplitude's definition",
                                 unit='V',
@@ -757,8 +980,16 @@ class ZIUHFLI(Instrument):
                                 val_mapping={'ON': 1, 'OFF': 0},
                                 vals=vals.Enum('ON', 'OFF') )
 
+        auxoutputchannels = ChannelList(self, "AUXOutputChannels", AUXOutputChannel,
+                               snapshotable=False)
 
-
+        for auxchannum in range(1,5):
+            name = 'aux_out{}'.format(auxchannum)
+            auxchannel = AUXOutputChannel(self, name, auxchannum)
+            auxoutputchannels.append(auxchannel)
+            self.add_submodule(name, auxchannel)
+        auxoutputchannels.lock()
+        self.add_submodule('aux_out_channels', auxoutputchannels)
         ########################################
         # SWEEPER PARAMETERS
 
@@ -1002,7 +1233,7 @@ class ZIUHFLI(Instrument):
                            label='Sweep timeout',
                            unit='s',
                            initial_value=600,
-                           parameter_class=ManualParameter)
+                           get_cmd=None, set_cmd=None)
 
         ########################################
         # THE SWEEP ITSELF
@@ -1059,7 +1290,7 @@ class ZIUHFLI(Instrument):
                             vals=vals.Enum('Time Domain', 'Freq Domain FFT')
                             )
 
-        # 1: Channel 1 on, Channel 2 off. 
+        # 1: Channel 1 on, Channel 2 off.
         # 2: Channel 1 off, Channel 2 on,
         # 3: Channel 1 on, Channel 2 on.
         self.add_parameter('scope_channels',
@@ -1071,7 +1302,7 @@ class ZIUHFLI(Instrument):
                            vals=vals.Enum(1, 2, 3)
                            )
 
-        self._samplingrate_codes = {'1.80 Ghz': 0,
+        self._samplingrate_codes = {'1.80 GHz': 0,
                                    '900 MHz': 1,
                                    '450 MHz': 2,
                                    '225 MHz': 3,
@@ -1119,8 +1350,8 @@ class ZIUHFLI(Instrument):
                            unit='s'
                            )
 
-        # Map the possible input sources to LabOne's IDs. 
-        # The IDs can be seen in log file of LabOne UI 
+        # Map the possible input sources to LabOne's IDs.
+        # The IDs can be seen in log file of LabOne UI
         inputselect = {'Signal Input 1': 0,
                        'Signal Input 2': 1,
                        'Trig Input 1': 2,
@@ -1138,9 +1369,9 @@ class ZIUHFLI(Instrument):
                        'AU Polar 1': 128,
                        'AU Polar 2': 129,
                        }
-        # Add all 8 demodulators and their respective parameters 
-        # to inputselect as well. 
-        # Numbers correspond to LabOne IDs, taken from UI log. 
+        # Add all 8 demodulators and their respective parameters
+        # to inputselect as well.
+        # Numbers correspond to LabOne IDs, taken from UI log.
         for demod in range(1,9):
             inputselect['Demod {} X'.format(demod)] = 15+demod
             inputselect['Demod {} Y'.format(demod)] = 31+demod
@@ -1357,7 +1588,8 @@ class ZIUHFLI(Instrument):
         if mode == 1:
             self.daq.setDouble(setstr, value)
 
-    def _getter(self, module, number, mode, setting):
+    def _getter(self, module: str, number: int,
+                mode: int, setting: str) -> Union[float, int, str, dict]:
         """
         General get function for generic parameters. Note that some parameters
         use more specialised setter/getters.
@@ -1370,7 +1602,7 @@ class ZIUHFLI(Instrument):
                 we want to know the value of.
             number (int): Module's index
             mode (int): Indicating whether we are asking for an int or double.
-                0: Int, 1: double.
+                0: Int, 1: double, 2: Sample
             setting (str): The module's setting to set.
         returns:
             inquered value
@@ -1378,13 +1610,29 @@ class ZIUHFLI(Instrument):
         """
 
         querystr = '/{}/{}/{}/{}'.format(self.device, module, number, setting)
+        log.debug("getting %s", querystr)
         if mode == 0:
             value = self.daq.getInt(querystr)
-        if mode == 1:
+        elif mode == 1:
             value = self.daq.getDouble(querystr)
-
+        elif mode == 2:
+            value = self.daq.getSample(querystr)
+        else:
+            raise RuntimeError("Invalid mode supplied")
         # Weird exception, samplingrate returns a string
         return value
+
+    def _get_demod_sample(self, number: int, demod_param: str) -> float:
+        log.debug("getting demod %s param %s", number, demod_param)
+        mode = 2
+        module = 'demods'
+        setting = 'sample'
+        if demod_param not in ['x', 'y', 'R', 'phi']:
+            raise RuntimeError("Invalid demodulator parameter")
+        datadict = self._getter(module, number, mode, setting)
+        datadict['R'] = np.abs(datadict['x'] + 1j * datadict['y'])
+        datadict['phi'] = np.angle(datadict['x'] + 1j * datadict['y'], deg=True)
+        return datadict[demod_param]
 
     def _sigout_setter(self, number, mode, setting, value):
         """
@@ -1433,11 +1681,9 @@ class ZIUHFLI(Instrument):
             nonlocal value
             nonlocal number
             range_val = params['signal_output{}_range'.format(number+1)].get()
-            range_val = round(val, 3)
+            range_val = round(range_val, 3)
             amp_val = params['signal_output{}_amplitude'.format(number+1)].get()
             amp_val = round(amp_val, 3)
-            toget = params['signal_output{}_autorange'.format(number+1)]
-            autorange_val = toget.get()
             if -range_val< value+amp_val > range_val:
                 raise ValueError('Signal Output: Offset too high for '
                                  'chosen range.')
@@ -1706,7 +1952,7 @@ class ZIUHFLI(Instrument):
             raise ValueError('Can not select attribute:'+
                              '{}. Only the following attributes are' +
                              ' available: ' +
-                             ('{}, '*len(attributes)).format(*attributes))
+                             ('{}, '*len(valid_attributes)).format(*valid_attributes))
 
         # internally, we use strings very similar to the ones used by the
         # instrument, but with the attribute added, e.g.
@@ -1926,5 +2172,8 @@ class ZIUHFLI(Instrument):
         """
         Override of the base class' close function
         """
+        self.scope.unsubscribe('/{}/scopes/0/wave'.format(self.device))
+        self.scope.clear()
+        self.sweeper.clear()
         self.daq.disconnect()
         super().close()

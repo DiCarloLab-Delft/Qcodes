@@ -7,11 +7,6 @@
             "description": "controls core settings of qcodes",
             "type" : "object",
             "properties" : {
-                "legacy_mp": {
-                    "type" : "boolean",
-                    "description": "control legacy buggy multiprocess",
-                    "default": false
-                },
                 "default_fmt": {
                     "type" : "string",
                     "description": "default location formatter",
@@ -28,9 +23,27 @@
                         "INFO",
                         "DEBUG"
                     ]
+                },
+                "register_magic" : {
+                    "description": "Register QCoDeS magic when in iPython. Can be set to True, False, or a list of magic commands to be registered",
+                    "anyOf" : [
+                        {"type": "boolean"},
+                        {"type": "array"}
+                    ],
+                    "default": true
+                },
+                "db_debug": {
+                    "description": "Use debugging mode in sqlite ",
+                    "type" : "boolean",
+                    "default": false
+                },
+                "db_location": {
+                    "type": "string",
+                    "description": "location of the database",
+                    "default": "./experiments.db"
                 }
             },
-            "required":[ "legacy_mp", "loglevel" ]
+            "required":["loglevel", "db_location"]
         },
         "gui" : {
             "type" : "object",
@@ -42,13 +55,23 @@
                     "default": true
                 },
                 "plotlib": {
-                    "description": "Plotting library",
+                    "description": "Plotting library set to null to run without plotting",
+                    "type": ["string", "null"],
+                    "enum": ["QT", "matplotlib", "all", null],
+                    "default": "all"
+                },
+                "pyqtmaxplots": {
+                    "description": "Maximum number of PyQtPlots to automatically keep in memory",
+                    "type": "integer",
+                    "default": 100
+                },
+                "defaultcolormap":{
+                    "description": "Default colormap to use for Heatmaps with both Matplotlib and PyQtGraph",
                     "type": "string",
-                    "enum": ["QT", "matplotlib" ],
-                    "default": "matplotlib"
+                    "default": "hot"
                 }
             },
-            "required":[ "notebook", "plotlib" ]
+            "required":[ "notebook", "plotlib", "pyqtmaxplots" ]
         },
         "user":{
             "type" : "object",
