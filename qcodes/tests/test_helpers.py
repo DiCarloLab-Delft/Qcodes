@@ -167,6 +167,10 @@ class TestPermissiveRange(TestCase):
                 permissive_range(*args)
 
     def test_good_calls(self):
+        # TODO(giulioungaretti)
+        # not sure what we are testing here.
+        # in pyhton 1.0 and 1 are actually the same
+        # https://docs.python.org/3.5/library/functions.html#hash
         good_args = {
             (1, 7, 2): [1, 3, 5],
             (1, 7, 4): [1, 5],
@@ -235,7 +239,12 @@ class TestWaitSecs(TestCase):
             finish_clock = time.perf_counter() + secs
             secs_out = wait_secs(finish_clock)
             self.assertGreater(secs_out, secs - 1e-4)
-            self.assertLessEqual(secs_out, secs)
+            # add a tiny offset as this test may fail if
+            # otherwise if the two calls to perf_counter are close
+            # enough to return the same result as a + b - a cannot
+            # in general be assumed to be <= b in floating point
+            # math (here a is perf_counter() and b is the wait time
+            self.assertLessEqual(secs_out, secs+1e-14)
 
     def test_warning(self):
         with LogCapture() as logs:

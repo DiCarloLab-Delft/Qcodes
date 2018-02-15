@@ -1,7 +1,10 @@
 """Ethernet instrument driver class based on sockets."""
 import socket
+import logging
 
 from .base import Instrument
+
+log = logging.getLogger(__name__)
 
 
 class IPInstrument(Instrument):
@@ -28,12 +31,6 @@ class IPInstrument(Instrument):
         write_confirmation (bool): Whether the instrument acknowledges writes
             with some response we should read. Default True.
 
-        server_name (str): Name of the InstrumentServer to use. Defaults to
-            'IPInstruments'.
-
-            Use ``None`` to run locally - but then this instrument will not
-            work with qcodes Loops or other multiprocess procedures.
-
         metadata (Optional[Dict]): additional static metadata to add to this
             instrument's JSON snapshot.
 
@@ -58,19 +55,6 @@ class IPInstrument(Instrument):
         self._socket = None
 
         self.set_persistent(persistent)
-
-    @classmethod
-    def default_server_name(cls, **kwargs):
-        """
-        Get the default server name for this instrument.
-
-        Args:
-            **kwargs: All the kwargs supplied in the constructor.
-
-        Returns:
-            str: By default all IPInstruments go on the server 'IPInstruments'.
-        """
-        return 'IPInstruments'
 
     def set_address(self, address=None, port=None):
         """
@@ -107,13 +91,21 @@ class IPInstrument(Instrument):
         else:
             self._disconnect()
 
+    def flush_connection(self):
+        self._recv()
+
     def _connect(self):
+
         if self._socket is not None:
             self._disconnect()
 
-        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._socket.connect((self._address, self._port))
-        self.set_timeout(self._timeout)
+        try:
+            self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._socket.connect((self._address, self._port))
+            self.set_timeout(self._timeout)
+        except ConnectionRefusedError:
+            self._socket.close()
+            self._socket = None
 
     def _disconnect(self):
         if getattr(self, '_socket', None) is None:
@@ -147,10 +139,14 @@ class IPInstrument(Instrument):
 
     def _send(self, cmd):
         data = cmd + self._terminator
-        self._socket.send(data.encode())
+        self._socket.sendall(data.encode())
 
     def _recv(self):
-        return self._socket.recv(self._buffer_size).decode()
+        result = self._socket.recv(self._buffer_size)
+        if result == b'':
+            log.warning("Got empty response from Socket recv() "
+                        "Connection broken.")
+        return result.decode()
 
     def close(self):
         """Disconnect and irreversibly tear down the instrument."""

@@ -58,6 +58,7 @@ coverage.xml
 
 # Sphinx documentation
 docs/_build/
+docs/_notebooks
 docs/api/generated/
 docs/_auto
 
@@ -77,3 +78,8 @@ target/
 tmp/
 
 docs/examples/data/*
+
+.idea/
+
+# Mac files
+.DS_Store

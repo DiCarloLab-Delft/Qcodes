@@ -67,7 +67,9 @@ project = 'QCoDeS'
 copyright = '2016, Giulio Ungaretti, Alex Johnson'
 author = 'Giulio Ungaretti, Alex Johnson'
 
-
+# Import matplotlib before qcodes import pyplot to set the backend
+import matplotlib
+matplotlib.use('Agg')
 # auto versioning
 import qcodes
 version = '{}'.format(qcodes.__version__)
@@ -360,7 +362,7 @@ html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 extensions.append('sphinx.ext.todo')
 todo_include_todos=True
 
-# basically hack to avoid having __init__() when we want just 
+# basically hack to avoid having __init__() when we want just
 autoclass_content = "init"
 # try to limit  auto sumamry and extensive auto doc only to the api part of the docs
 with open("index.rst") as f:
@@ -376,13 +378,13 @@ if any([re.match("\s*api\s*",l) for l in index_rst_lines]):
 autodoc_default_flags = []
 # we have to do this, do avoid sideeffects when importing matplotlib
 autodoc_mock_imports = []
-try:
-    import matplotlib
-    matplotlib.use('PS')
-    autodoc_mock_imports.append('matplotlib')
-except ImportError as e:
-        print(e)
 autodoc_mock_imports.append('pyspcm')
+autodoc_mock_imports.append('zhinst')
+autodoc_mock_imports.append('zhinst.utils')
+autodoc_mock_imports.append('keysightSD1')
+autodoc_mock_imports.append('cffi')
+autodoc_mock_imports.append('spirack')
+autodoc_mock_imports.append('clr')
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = []
