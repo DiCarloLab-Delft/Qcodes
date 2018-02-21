@@ -76,7 +76,7 @@ class Current_Source_ER_88027(Instrument):
         if abs(self.I()-0)>eps:
             return 0.3
         else:
-            return 1e3
+            return 0.3
 
 
 def convert_I(dacV):
