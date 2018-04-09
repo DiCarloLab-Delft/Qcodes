@@ -43,7 +43,9 @@ class AMI_Magnet_PCS_SN14768(Instrument):
     a bit awkward. The driver checks the last measurement for the value and if
     this does not exists it fails. To do the first initialization it is necessary
     to start everything up while having the 'get_field' function return 0 always.
-    Make a fake folder with the name ''. Then exit and reinitialize with the
+    Make a fake folder with the name
+    'Switch_is_changed_to_SuperConducting_state'.
+    Then exit and reinitialize with the
     'get_field' function returning what it is supposed to.
 
     '''
@@ -63,7 +65,8 @@ class AMI_Magnet_PCS_SN14768(Instrument):
         # Specifications of One Axis AMI magnet with PCS_14768
 
         self.max_current = 5.0 # Amperes
-        self.field_to_current = 5e-2 # Telsa/Ampere
+        #### Dirty hack to get the z-axis of the new magnet running
+        self.field_to_current = 0.0496 # Telsa/Ampere
                                     #   (Spec sheet says 0.500 kG/A = 50 mT/A)
         self.max_field = self.max_current*self.field_to_current  # Tesla
                             #(Spec sheet says 20 kG = 2.0 T)
@@ -232,7 +235,13 @@ class AMI_Magnet_PCS_SN14768(Instrument):
         if self.switch_state() == 'SuperConducting':
             raise ValueError('Switch is SuperConducting. Can not change the field.')
         elif self.switch_state() =='NormalConducting':
-            if self.i_magnet.measureR()>1:
+            if self.i_magnet.measurei()==0:
+                self.step_magfield_to_value(field)
+                # self.field(field)
+                field_folder_name = 'Changed_field_to_' + str(field) + '_T'
+                self.fake_folder(folder_name=field_folder_name)
+                return 'field at ' +str(field)+' T'
+            elif self.i_magnet.measureR()>1:
                 raise ValueError('Magnet leads are not connected \
                                  or manget quenched!')
             else:
@@ -243,7 +252,7 @@ class AMI_Magnet_PCS_SN14768(Instrument):
                 return 'field at ' +str(field)+' T'
 
     def get_field(self):
-        # return 0 # Only add this line when doing the first initialization!
+        # return 0.0 # Only add this line when doing the first initialization!
         if self.switch_state()=='SuperConducting':
             ## get the persistent field from the HDF5 file
 
