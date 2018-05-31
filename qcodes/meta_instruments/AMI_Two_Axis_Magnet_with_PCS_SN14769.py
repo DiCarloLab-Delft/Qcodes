@@ -78,7 +78,7 @@ class AMI_Two_Axis_Magnet_PCS_SN14769(Instrument):
         self.MC = MC_inst
         # Specifications of One Axis AMI magnet with PCS_14768
 
-        self.max_current_z = 5.0 # Amperes
+        self.max_current_z = 10.0 # 5.0 # Amperes
         self.max_current_y = 10.0 # Amperes
         self.field_to_current_z = 0.0496 # Telsa/Ampere
                                     #   (Spec sheet says 0.496 kG/A = 49.6 mT/A)
@@ -89,6 +89,7 @@ class AMI_Two_Axis_Magnet_PCS_SN14769(Instrument):
         self.max_field_y = self.max_current_y*self.field_to_current_y  # Tesla
                             #(Spec sheet says 5 kG = 0.5 T)
         # self.Ramp_Rate = 0.05 # Ampere/Second
+        self.step_grid_points_mag = 1e-3 # zig-zag step size in mT
         self.max_ramp_rate_z = 0.1 # Max ramp rate: 0.677 # Ampere/Second
         self.max_ramp_rate_y = 0.1 # Max ramp rate: 0.054 # Ampere/Second
         self.init_ramp_rate_z = 0.025
@@ -146,7 +147,8 @@ class AMI_Two_Axis_Magnet_PCS_SN14769(Instrument):
                            set_cmd=self.set_field,
                            label='Persistent Field',
                            unit='T',
-                           vals=vals.Numbers(min_value=0.,max_value=min(self.max_field_y,self.max_field_z)),
+                           # vals=vals.Numbers(min_value=0.,max_value=min(self.max_field_y,self.max_field_z)),
+                           vals=vals.Numbers(min_value=0.,max_value=max(self.max_field_y,self.max_field_z)),
                            docstring='Persistent absolute magnetic field')
         self.add_parameter('angle',
                            get_cmd=self.get_angle,
@@ -388,49 +390,70 @@ class AMI_Two_Axis_Magnet_PCS_SN14769(Instrument):
         if not self.protection_state:
             return 0.
         angle = self.angle()
-        desired_z_field = field*np.cos(angle*2.*np.pi/360)
-        desired_y_field = field*np.sin(angle*2.*np.pi/360)
-        # if desired_y_field == 0. and self.switch_state_z() == 'SuperConducting':
-        #     raise ValueError('Switch_Z is SuperConducting. Can not change the field.')
-        # elif desired_z_field == 0. and self.switch_state_y() == 'SuperConducting':
-        #     raise ValueError('Switch_Y is SuperConducting. Can not change the field.')
-        if self.switch_state_z() == 'SuperConducting' or self.switch_state_y() == 'SuperConducting':
-            raise ValueError('Switch_Y and/or Switch_Z are SuperConducting. Can not change the field.')
-        elif self.switch_state_z() =='NormalConducting' and self.switch_state_y() =='NormalConducting':
-            if self.i_magnet_z.measurei()==0:
-                self.step_z_magfield_to_value(desired_z_field)
-                # self.field(field)
-                # field_folder_name = 'Changed_Z_field_to_' + str(desired_z_field) + '_T'
-                # self.fake_folder(folder_name=field_folder_name)
-                # return 'field at ' +str(field)+' T'
-            elif self.i_magnet_z.measureR()>1:
-                raise ValueError('Magnet Z leads are not connected \
-                                 or manget quenched!')
+        desired_z_field_total = field*np.cos(angle*2.*np.pi/360)
+        desired_y_field_total = field*np.sin(angle*2.*np.pi/360)
+
+        current_field = self.field()
+        current_z_field = self.field_z()
+        current_y_field = self.field_y()
+        step_mag_z = self.step_grid_points_mag*np.cos(angle*2.*np.pi/360)
+        step_mag_y = self.step_grid_points_mag*np.sin(angle*2.*np.pi/360)
+        if field>=current_field:
+            step_z = +1*step_mag_z
+            step_y = +1*step_mag_y
+        if field<current_field :
+            step_z = -1*step_mag_z
+            step_y = -1*step_mag_y
+        num_steps = int(np.ceil(np.abs(current_field-field)/self.step_grid_points_mag))
+        for tt in range(num_steps):
+            if tt == num_steps-1:
+                current_z_field = desired_z_field_total
+                current_y_field = desired_y_field_total
             else:
-                self.step_z_magfield_to_value(desired_z_field)
-                # self.field(field)
+                current_z_field += step_z
+                current_y_field += step_y
+
+            # if current_y_field == 0. and self.switch_state_z() == 'SuperConducting':
+            #     raise ValueError('Switch_Z is SuperConducting. Can not change the field.')
+            # elif current_z_field == 0. and self.switch_state_y() == 'SuperConducting':
+            #     raise ValueError('Switch_Y is SuperConducting. Can not change the field.')
+            if self.switch_state_z() == 'SuperConducting' or self.switch_state_y() == 'SuperConducting':
+                raise ValueError('Switch_Y and/or Switch_Z are SuperConducting. Can not change the field.')
+            elif self.switch_state_z() =='NormalConducting' and self.switch_state_y() =='NormalConducting':
+                if self.i_magnet_z.measurei()<1e-3:
+                    self.step_z_magfield_to_value(current_z_field)
+                    # self.field(field)
+                    # field_folder_name = 'Changed_Z_field_to_' + str(current_z_field) + '_T'
+                    # self.fake_folder(folder_name=field_folder_name)
+                    # return 'field at ' +str(field)+' T'
+                elif self.i_magnet_z.measureR()>1:
+                    raise ValueError('Magnet Z leads are not connected \
+                                     or manget quenched!')
+                else:
+                    self.step_z_magfield_to_value(current_z_field)
+                    # self.field(field)
+                    # field_folder_name = 'Changed_field_to_' + str(field) + '_T'
+                    # self.fake_folder(folder_name=field_folder_name)
+                    # return 'field at ' +str(field)+' T'
+                if np.abs(self.i_magnet_y.measurei())<1e-3:
+                    self.step_y_magfield_to_value(current_y_field)
+                    # self.field(field)
+                    # field_folder_name = 'Changed_y_field_to_' + str(current_y_field) + '_T'
+                    # self.fake_folder(folder_name=field_folder_name)
+                    # return 'field at ' +str(field)+' T'
+                elif self.i_magnet_y.measureR()>1:
+                    raise ValueError('Magnet Y leads are not connected \
+                                     or manget quenched!')
+                else:
+                    self.step_y_magfield_to_value(current_y_field)
+                    # self.field(field)
+                    # field_folder_name = 'Changed_field_to_' + str(field) + '_T'
+                    # self.fake_folder(folder_name=field_folder_name)
+                    # return 'field at ' +str(field)+' T'
                 # field_folder_name = 'Changed_field_to_' + str(field) + '_T'
                 # self.fake_folder(folder_name=field_folder_name)
-                # return 'field at ' +str(field)+' T'
-            if self.i_magnet_y.measurei()==0:
-                self.step_y_magfield_to_value(desired_y_field)
-                # self.field(field)
-                # field_folder_name = 'Changed_y_field_to_' + str(desired_y_field) + '_T'
-                # self.fake_folder(folder_name=field_folder_name)
-                # return 'field at ' +str(field)+' T'
-            elif self.i_magnet_y.measureR()>1:
-                raise ValueError('Magnet Y leads are not connected \
-                                 or manget quenched!')
-            else:
-                self.step_y_magfield_to_value(desired_y_field)
-                # self.field(field)
-                # field_folder_name = 'Changed_field_to_' + str(field) + '_T'
-                # self.fake_folder(folder_name=field_folder_name)
-                # return 'field at ' +str(field)+' T'
-            # field_folder_name = 'Changed_field_to_' + str(field) + '_T'
-            # self.fake_folder(folder_name=field_folder_name)
-            print('Field at ' +str(field)+' T, angle at '+str(angle)+' deg.')
-            return 0.
+                print('Field at ' +str(self.field())+' T, angle at '+str(self.angle())+' deg.')
+        return 0.
 
 
     def get_field(self):
@@ -471,7 +494,7 @@ class AMI_Two_Axis_Magnet_PCS_SN14769(Instrument):
         if self.switch_state_z() == 'SuperConducting' or self.switch_state_y() == 'SuperConducting':
             raise ValueError('Switch is SuperConducting. Can not change the field.')
         elif self.switch_state_z() =='NormalConducting' and self.switch_state_y() =='NormalConducting':
-            if self.i_magnet_z.measurei()==0:
+            if self.i_magnet_z.measurei()<1e-3:
                 self.field_z(desired_z_field)
                 # self.field(field)
                 # field_folder_name = 'Changed_Z_field_to_' + str(desired_z_field) + '_T'
@@ -486,7 +509,7 @@ class AMI_Two_Axis_Magnet_PCS_SN14769(Instrument):
                 # field_folder_name = 'Changed_field_to_' + str(field) + '_T'
                 # self.fake_folder(folder_name=field_folder_name)
                 # return 'field at ' +str(field)+' T'
-            if self.i_magnet_y.measurei()==0:
+            if np.abs(self.i_magnet_y.measurei())<1e-3:
                 self.field_y(desired_y_field)
                 # self.field(field)
                 # field_folder_name = 'Changed_y_field_to_' + str(desired_y_field) + '_T'
@@ -546,7 +569,7 @@ class AMI_Two_Axis_Magnet_PCS_SN14769(Instrument):
         if self.switch_state_z() == 'SuperConducting':
             raise ValueError('Z-Switch is SuperConducting. Can not change the field.')
         elif self.switch_state_z() =='NormalConducting':
-            if self.i_magnet_z.measurei()==0:
+            if self.i_magnet_z.measurei()<1e-3:
                 self.step_z_magfield_to_value(field)
                 # self.field(field)
                 # field_folder_name = 'Changed_field_to_' + str(field) + '_T'
@@ -568,7 +591,7 @@ class AMI_Two_Axis_Magnet_PCS_SN14769(Instrument):
         if self.switch_state_y() == 'SuperConducting':
             raise ValueError('Y-Switch is SuperConducting. Can not change the field.')
         elif self.switch_state_y() =='NormalConducting':
-            if self.i_magnet_y.measurei()==0:
+            if np.abs(self.i_magnet_y.measurei())<1e-3:
                 self.step_y_magfield_to_value(field)
                 # self.field(field)
                 # field_folder_name = 'Changed_field_to_' + str(field) + '_T'
