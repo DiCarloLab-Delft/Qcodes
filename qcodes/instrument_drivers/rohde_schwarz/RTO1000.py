@@ -367,6 +367,18 @@ class RTO1000(VisaInstrument):
                                         'CH4': 'CHAN4',
                                         'EXT': 'EXT'})
 
+        self.add_parameter('trigger_mode',
+                           label='Trigger mode',
+                           set_cmd='TRIGger:MODE {}',
+                           get_cmd='TRIGger1:SOURce?',
+                           val_mapping={'AUTO': 'AUTO',
+                                        'NORMAL': 'NORMal',
+                                        'FREERUN': 'FREerun'},
+                           docstring='Sets the trigger mode which determines the ' \
+                           ' behaviour of the instrument if no trigger occurs.\n'    \
+                           'Options: AUTO, NORMAL, FREERUN.',
+                           unit='none')
+
         self.add_parameter('trigger_type',
                            label='Trigger type',
                            set_cmd='TRIGger1:TYPE {}',
@@ -488,7 +500,12 @@ class RTO1000(VisaInstrument):
                                label='High definition (16 bit) state',
                                set_cmd=self._set_hd_mode,
                                get_cmd='HDEFinition:STAte?',
-                               val_mapping={'ON': 1, 'OFF': 0})
+                               val_mapping={'ON': 1, 'OFF': 0},
+                               docstring='Sets the filter bandwidth for the high definition mode.\n' \
+                               'ON: high definition mode, up to 16 bit digital resolution\n' \
+                               'Options: ON, OFF\n\n' \
+                               'Warning/Bug: By opening the HD acquisition menu on the scope, ' \
+                               'this value will be set to "ON"')
 
             self.add_parameter('high_definition_bandwidth',
                                label='High definition mode bandwidth',
