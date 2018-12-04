@@ -172,18 +172,41 @@ class ScopeMeasurement(InstrumentChannel):
                         'Z2I1',     'Z2I2',     'Z2I3',     'Z2I4')
 
         self.categories = vals.Enum('AMPTime',   'JITTer', 'EYEJitter', 'SPECtrum',
-                           'HISTogram', 'PROTocol')
+                                    'HISTogram', 'PROTocol')
 
-        self.meas_type = vals.Enum('HIGH',        'LOW',          'AMPLitude',    'MAXimum',
-                         'MINimum',     'PDELta',       'MEAN',         'RMS',
-                         'STDDev',      'POVershoot',   'NOVershoot',   'AREA',
-                         'RTIMe',       'FTIMe',        'PPULse',       'NPULse',
-                         'PERiod',      'FREQuency',    'PDCYcle',      'NDCYcle',
-                         'CYCarea',     'CYCMean',      'CYCRms',       'CYCStddev',
-                         'PULCnt',      'DELay',        'PHASe',        'BWIDth',
-                         'PSWitching',  'NSWitching',   'PULSetrain',   'EDGecount',
-                         'SHT',         'SHR',          'DTOTrigger',   'PROBemeter',
-                         'SLERising',   'SLEFalling')
+        self.meas_type = vals.Enum(
+                        # Amplitude/time measurements
+                        'HIGH',        'LOW',          'AMPLitude',    'MAXimum',
+                        'MINimum',     'PDELta',       'MEAN',         'RMS',
+                        'STDDev',      'POVershoot',   'NOVershoot',   'AREA',
+                        'RTIMe',       'FTIMe',        'PPULse',       'NPULse',
+                        'PERiod',      'FREQuency',    'PDCYcle',      'NDCYcle',
+                        'CYCarea',     'CYCMean',      'CYCRms',       'CYCStddev',
+                        'PULCnt',      'DELay',        'PHASe',        'BWIDth',
+                        'PSWitching',  'NSWitching',   'PULSetrain',   'EDGecount',
+                        'SHT',         'SHR',          'DTOTrigger',   'PROBemeter',
+                        'SLERising',   'SLEFalling'
+                        # Jitter measurements
+                        'CCJitter',     'NCJitter',    'CCWidth',      'CCDutycycle',
+                        'TIE',          'UINTerval',   'DRATe',        'SKWDelay',
+                        'SKWPhase',
+                        # Eye diagram measurements
+                        'ERPercent',    'ERDB',         'EHEight',      'EWIDth',
+                        'ETOP',         'EBASe',        'QFACtor',      'RMSNoise',
+                        'SNRatio',      'DCDistortion', 'ERTime',       'EFTime',
+                        'EBRate',       'EAMPlitude',   'PPJitter',     'STDJitter',
+                        'RMSJitter',
+                        # Spectrum measurements
+                        'CPOWer',       'OBWidth',      'SBWidth',      'THD',
+                        'THDPCT',       'THDA',         'THDU',         'THDR',
+                        'HAR',          'PLISt',
+                        # Histogram measurements
+                        'WCOunt',       'WSAMples',     'HSAMples',     'HPEak',
+                        'PEAK',         'UPEakvalue',   'LPEakvalue',   'HMAXimum',
+                        'HMINimum',     'MEDian',       'MAXMin',       'HMEan',
+                        'HSTDdev',      'M1STddev',     'M2STddev',     'M3STddev',
+                        'MKPositive',   'MKNegative'
+                        )
 
         self.add_parameter('enable',
                            label='Measurement {} enable'.format(meas_nr),
@@ -633,6 +656,17 @@ class RTO1000(VisaInstrument):
                                get_parser=float,
                                vals=vals.Numbers(1e4, 1e9))
 
+        self.add_parameter('error_count',
+                           label='Number of errors in the error stack',
+                           get_cmd='SYSTem:ERRor:COUNt?',
+                           unit='#',
+                           get_parser=int)
+
+        self.add_parameter('error_next',
+                           label='Next error from the error stack',
+                           get_cmd='SYSTem:ERRor:NEXT?',
+                           get_parser=str)
+
         # Add the channels to the instrument
         for ch in range(1, self.num_chans+1):
             chan = ScopeChannel(self, 'channel{}'.format(ch), ch)
@@ -644,8 +678,8 @@ class RTO1000(VisaInstrument):
 
         self.add_function('stop', call_cmd='STOP')
         self.add_function('reset', call_cmd='*RST')
-        self.add_function('opc', call_cmd='*OPC?')
-        self.add_function('stop_opc', call_cmd='*STOP;OPC?')
+        self.add_parameter('opc', get_cmd='*OPC?')
+        self.add_parameter('stop_opc', get_cmd='STOP;*OPC?')
         self.add_function('run_continues', call_cmd='RUNContinous')
         # starts the shutdown of the system
         self.add_function('system_shutdown', call_cmd='SYSTem:EXIT')
