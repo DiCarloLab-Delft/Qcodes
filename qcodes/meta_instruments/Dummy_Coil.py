@@ -18,14 +18,11 @@ from qcodes.utils import validators as vals
 from qcodes.instrument.parameter import ManualParameter
 from pycqed.instrument_drivers.pq_parameters import InstrumentParameter
 
+from qcodes.meta_instruments.Persistent_Coil import Persistent_Coil
 
-
-
-class Persistent_Coil(Instrument):
+class Dummy_Coil(Instrument):
 
     def __init__(self, name,
-                 Current_source_magnet,
-                 Current_source_heater,
                  field_to_current,
                  min_field,
                  max_field,
@@ -34,12 +31,15 @@ class Persistent_Coil(Instrument):
                  MC_inst,**kw):
         super().__init__(name, **kw)
 
+        #Needs from the 3-axis magnet
+        #method switch_state()
+        #method bring source to field
+        #methods set/get_field()
+        #methods compensate for drift
+
         self.protection_state=False
         # Set current source
         self.add_parameter('i_magnet', parameter_class=InstrumentParameter)
-        self.i_magnet = Current_source_magnet
-        self.add_parameter('i_heater', parameter_class=InstrumentParameter)
-        self.i_heater = Current_source_heater
         self.MC = MC_inst
         self.name = name
         self.add_parameter('field',
@@ -50,14 +50,14 @@ class Persistent_Coil(Instrument):
                            vals=vals.Numbers(min_value=min_field,
                                              max_value=max_field),
                            docstring='Magnetic Field sourced by Coil')
-        self.add_parameter('source_current',
-                           get_cmd=self.get_source_current,
-                           set_cmd=self.set_source_current,
-                           label='Source Current',
-                           unit='A',
-                           vals=vals.Numbers(min_value=min_field/field_to_current,
-                                             max_value=max_field/field_to_current),
-                           docstring='Current supplied to the coil')
+        self.add_parameter('source_field',
+                           get_cmd=self.get_source_field,
+                           set_cmd=self.set_source_field,
+                           label='Source Field',
+                           unit='T',
+                           vals=vals.Numbers(min_value=min_field,
+                                             max_value=max_field),
+                           docstring='Field maintained as seen by the AMI')
         self.add_parameter('switch_state',
                            get_cmd=self.get_switch_state,
                            set_cmd=self.set_switch_state,
@@ -66,19 +66,32 @@ class Persistent_Coil(Instrument):
                            vals=vals.Enum('SuperConducting','NormalConducting'),
                            docstring='Indicating whether the coil is in\
                                persistenet current mode')
+        # self.add_parameter("ramp_rate",
+        #                    get_cmd=self.i_source.ramp_rate,
+        #                    set_cmd=lambda d: self.i_source.ramp_rate(d),
+        #                    label='Ramp Rate',
+        #                    unit='T/s',
+        #                    vals=vals.Numbers(min_value=0,
+        #                                      max_value=ramp_rate*field_to_current),
+        #                    docstring='Indicating whether the coil is in\
+        #                        persistenet current mode')
 
         self.field_to_current = field_to_current # units of T/A
         self.ramp_rate = ramp_rate # units of A/s
-        self.switch_heater_current = switch_heater_current
-
+        self.switch_heater_current = switch_heater_current #Not used for the AMI
         self.persistent = True
-
         self.protection_state=True
+
+        #Dummy coil parameters
+        self._field=0
+        self._is_quenched=False
+        self._heater_state=True
+
 
         self.get_all()
 
     def get_all(self):
-        self.get_source_current()
+        self.get_source_field()
         self.switch_state()
         self.get_field()
         return
@@ -91,35 +104,35 @@ class Persistent_Coil(Instrument):
         '''
         Checks if there is a quench present
         '''
-        return (self.i_magnet.measureR() > 1)
+        return self._is_quenched
 
-    def get_source_current(self):
-        return self.i_magnet.measurei()
+    def set_quenched(self,value):
+        self._is_quenched=value
+    def set_source_field(self,field):
+        ##set_field of the AMI is blocking. Use ramp_to to have a non-blocking call
+        self._field = field
 
-    def set_source_current(self,current):
-        self.i_magnet.seti(current)
-        return self.name+' current set to '+str(current)+' A'
+        return self.name+' field set to '+str(field)+' T'
 
-    def get_heater_current(self):
-        return self.i_heater.I()
+    def get_source_field(self):
+        return self._field
 
-    def set_heater_current(self,value):
-        return self.i_heater.I(value)
+    def heater_enabled(self):
+        # return self.i_source.switch_heater_enabled()
+        return self._heater_state
 
+    def turn_on_heater(self,turn_on):
+        self._heater_state=turn_on
 
     ############
     ### Functions only using the wrapper functions
     ############
     def get_switch_state(self):
-        heater_current_now = self.get_heater_current()
-        if 1.05*self.switch_heater_current>heater_current_now\
-                            >0.95*self.switch_heater_current:
+        if self.heater_enabled():
             return 'NormalConducting'
-        elif 0.05*self.switch_heater_current>heater_current_now\
-                        >-0.05*self.switch_heater_current:
-            return 'SuperConducting'
         else:
-            raise ValueError('Switch is not in a well defined state!')
+            return 'SuperConducting'
+
 
     def set_switch_state(self,desired_state):
         if desired_state == 'SuperConducting' and\
@@ -133,7 +146,7 @@ class Persistent_Coil(Instrument):
         elif desired_state == 'SuperConducting' and\
                 self.get_switch_state() == 'NormalConducting':
             # print('Ramping current down...')
-            self.set_heater_current(0)
+            self.turn_on_heater(False)
             # print('Wait 2 minutes to cool the switch for coil '+self.name)
             # time.sleep(120) # 120
             # print('Switch of '+self.name+' coil is now SuperConducting')
@@ -144,32 +157,35 @@ class Persistent_Coil(Instrument):
             if self.check_for_quench():
                 raise ValueError('Magnet leads not connected!')
             else:
-                supplied_current = self.get_source_current()
+                supplied_field = self.get_source_field()
+                # supplied_current = self.get_source_current()
                 if self.get_field()==None:
                     # print('Sourcing current...')
-                    self.set_heater_current(self.switch_heater_current)
+                    self.turn_on_heater(True)
                     # print('Wait 30 seconds to heat up the switch.')
                     # time.sleep(30) # 30
                     # print('Switch is now NormalConducting')
                     self.fake_folder(folder_name='Switch_'+self.name+'_Coil_changed_to_NormalConducting_state')
                     return 'NormalConducting'
-                elif supplied_current<2e-3 and np.abs(self.get_field())<1e-4:
+                # elif supplied_current<2e-3 and np.abs(self.get_field())<1e-4:
+                elif supplied_field<1e-4 :
+
                     # print('Sourcing current...')
-                    self.set_heater_current(self.switch_heater_current)
+                    self.turn_on_heater(True)
                     # print('Wait 30 seconds to heat up the switch.')
                     # time.sleep(30) # 30
                     # print('Switch is now NormalConducting')
                     self.fake_folder(folder_name='Switch_'+self.name+'_Coil_changed_to_NormalConducting_state')
                     return 'NormalConducting'
-                elif not 0.98*supplied_current<self.field_to_curr(self.get_field())\
-                    <1.02*supplied_current:
+                elif not 0.98*supplied_field<self.get_field()\
+                    <1.02*supplied_field:
                     raise ValueError('Current of '+self.name+' coil is not \
                                         according to the field value! Use \
                                         bring_source_to_field function to \
                                         bring it to the correct value.')
                 else:
                     # print('Sourcing current...')
-                    self.set_heater_current(self.switch_heater_current)
+                    self.turn_on_heater(True)
                     # print('Wait 30 seconds to heat up the switch.')
                     # time.sleep(30) # 30
                     # print('Switch is now NormalConducting')
@@ -185,7 +201,7 @@ class Persistent_Coil(Instrument):
         if self.switch_state() == 'SuperConducting':
             raise ValueError('Switch of '+self.name+' coil is SuperConducting. Can not change the field.')
         elif self.switch_state() =='NormalConducting':
-            if self.get_source_current()<2e-3:
+            if self.get_source_field()<1e-4:
                 self.step_field_to_value(field)
                 return 'Field of '+self.name+' coil at ' +str(field)+' T'
             elif self.check_for_quench():
@@ -198,48 +214,22 @@ class Persistent_Coil(Instrument):
     def get_field(self):
         # return 0.0 # Only add this line when doing the first initialization!
         if self.switch_state()=='SuperConducting':
-            ## get the persistent field from the HDF5 file
-            timestamp = atools.latest_data(contains='Switch_'+self.name+'_Coil_changed_to_SuperConducting_state',
-                                           return_timestamp=True)[0]
-            params_dict = {'field':self.name+'.field'}
-            numeric_params = ['field']
-            data = a_tools.get_data_from_timestamp_list([timestamp], params_dict,
-                                               numeric_params=numeric_params, filter_no_analysis=False)
-            return data['field'][0]
+            #We do not save the actual field in a file
+            return self.get_source_field()
+
+
+            # ## get the persistent field from the HDF5 file
+            # timestamp = atools.latest_data(contains='Switch_'+self.name+'_Coil_changed_to_SuperConducting_state',
+            #                                return_timestamp=True)[0]
+            # params_dict = {'field':self.name+'.field'}
+            # numeric_params = ['field']
+            # data = a_tools.get_data_from_timestamp_list([timestamp], params_dict,
+            #                                    numeric_params=numeric_params, filter_no_analysis=False)
+            # return data['field'][0]
         else: ## Normal conducting
             meas_field = self.measure_field()
             return meas_field
 
-    def measure_field(self):
-        if self.i_magnet is not None:
-            I = self.get_source_current()
-            B = self.curr_to_field(I)
-            return B
-        else:
-            print(self.name+' coil has no magnet current source!')
-
-    def step_field_to_value(self,field):
-        MagCurrRatio = self.field_to_current # Tesla/Ampere
-        step_time = 0.01 # in seconds
-        if self.ramp_rate is not None:
-            Ramp_rate_I = self.ramp_rate
-            current_step = Ramp_rate_I  * step_time
-        else:
-            raise ValueError('Specify either ramp rate or field step!')
-        I_now = self.field_to_curr(self.get_field())
-        current_target = self.field_to_curr(field)
-        if current_target >= I_now:
-            current_step *= +1
-        if current_target < I_now:
-            current_step *= -1
-        num_steps = int(1.*(current_target-I_now)/(current_step))
-        sweep_time = step_time*num_steps
-        print('Sweep time is '+str(np.abs(sweep_time))+' seconds')
-        for tt in range(num_steps):
-            time.sleep(step_time)
-            self.set_source_current(I_now)
-            I_now += current_step
-        self.set_source_current(self.field_to_curr(field))
 
     def field_to_curr(self,field):
         return field/self.field_to_current
@@ -284,3 +274,51 @@ class Persistent_Coil(Instrument):
         '''
         self.compensate_for_drift(compensation_factor=1.)
 
+########
+###Below are the 2nd level of interface
+########
+    def step_field_to_value(self,field):
+        '''
+        Don't use this function, this function is the internal ramping
+        that actually communicates with the current/magnet source
+        to ramp the field to a certain value
+        '''
+
+
+
+        step_time = 0.01 # in seconds
+        if self.ramp_rate is not None:
+            Ramp_rate_I = self.ramp_rate
+            # current_step = Ramp_rate_I  * step_time
+            field_step = self.curr_to_field(Ramp_rate_I*step_time)
+        else:
+            raise ValueError('Specify either ramp rate or field step!')
+        # I_now = self.field_to_curr(self.get_field())
+        B_now = self.get_field()
+        # current_target = self.field_to_curr(field)
+        B_target = field
+        # if current_target >= I_now:
+        #     current_step *= +1
+        # if current_target < I_now:
+        #     current_step *= -1
+        if B_target >= B_now:
+            field_step *= +1
+        elif B_target <=B_now:
+            field_step *= -1
+        num_steps = int(1.*(B_target-B_now)/(field_step))
+        sweep_time = step_time*num_steps
+        print('Sweep time is '+str(np.abs(sweep_time))+' seconds')
+        for tt in range(num_steps):
+            time.sleep(step_time)
+            self.set_source_field(B_now)
+            B_now += field_step
+
+        self.set_source_field(field)
+
+
+    def measure_field(self):
+        if True:
+            B = self.get_source_field()
+            return B
+        else:
+            print(self.name+' coil has no magnet current source!')

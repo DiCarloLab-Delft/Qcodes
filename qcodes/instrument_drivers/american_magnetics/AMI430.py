@@ -207,16 +207,17 @@ class AMI430(IPInstrument):
             return
 
         if self._can_start_ramping():
-            self.pause()
+            # self.pause()
 
-            # Set the ramp target
-            self.write('CONF:FIELD:TARG {}'.format(value))
 
             # If we have a persistent switch, make sure it is resistive
             if self._persistent_switch:
                 if not self.switch_heater_enabled():
                     self.switch_heater_enabled(True)
+            # Set the ramp target
+            self.write('CONF:FIELD:TARG {}'.format(value))
 
+            self._sleep(0.5)
             self.ramp()
             self._sleep(0.5)
 
@@ -224,12 +225,12 @@ class AMI430(IPInstrument):
             while self.ramping_state() == 'ramping':
                 self._sleep(0.3)
 
-            self._sleep(2.0)
             state = self.ramping_state()
 
             # If we are now holding, it was successful
             if state == 'holding':
-                self.pause()
+                pass
+                # self.pause()
             else:
                 msg = '_set_field({}) failed with state: {}'
                 raise Exception(msg.format(value, state))
@@ -253,13 +254,16 @@ class AMI430(IPInstrument):
         if self._can_start_ramping():
             self.pause()
 
-            # Set the ramp target
-            self.write('CONF:FIELD:TARG {}'.format(value))
 
             # If we have a persistent switch, make sure it is resistive
             if self._persistent_switch:
                 if not self.switch_heater_enabled():
                     self.switch_heater_enabled(True)
+            self._sleep(0.5)
+
+            # Set the ramp target
+            self.write('CONF:FIELD:TARG {}'.format(value))
+            self._sleep(0.5)
 
             self.ramp()
 

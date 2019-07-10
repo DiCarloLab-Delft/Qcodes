@@ -252,7 +252,7 @@ class AMI_Magnet_PCS_SN14768(Instrument):
                 return 'field at ' +str(field)+' T'
 
     def get_field(self):
-        # return 0.0 # Only add this line when doing the first initialization!
+        return 0.0 # Only add this line when doing the first initialization!
         if self.switch_state()=='SuperConducting':
             ## get the persistent field from the HDF5 file
 

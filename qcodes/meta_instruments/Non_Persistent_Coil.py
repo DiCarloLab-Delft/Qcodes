@@ -49,6 +49,8 @@ class Non_Persistent_Coil(Instrument):
         self.field_step = field_step
         self.ramp_rate = ramp_rate # units of A/s
 
+        self.persistent = False
+
         self.get_field()
 
     def set_field(self,field):
