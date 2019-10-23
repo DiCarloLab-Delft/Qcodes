@@ -112,10 +112,58 @@ class AMI430(IPInstrument):
             self.add_parameter('in_persistent_mode',
                                get_cmd='PERS?',
                                val_mapping={False: 0, True: 1})
+            #FIXME: this throws an error in hdf5.data's write_dict_to_hdf5
+            # Exception occurred while writing False:0 of type <class 'int'>
+            # "WARNING:root:'bool' object has no attribute 'encode'"
+            # Exception occurred while writing True:1 of type <class 'int'>
+            # "WARNING:root:'bool' object has no attribute 'encode'"
+            # these are entry point 'Snapshot/instruments/A8088_Y_AX/parameters
+            # /is_quenched/val_mapping'
+            # and data dict {False:0, True:1}
+            # this might be due to the magnet class
+            # This function is only called from the measurement_control
+            # (Technically also from base_analysis, but this does not cause a problem)
 
+            #FIXME: there is a bug here.
+            #The get command returns a string from the AMI interface
+            #The set command needs a boolean to pass to _set_persistent_switch
+
+            #Proposed fixes, need to be tested in a safe environment
+            #Because I'm not sure i this solves it
+            # self.add_parameter('switch_heater_enabled',
+            #                    get_cmd='PS?',
+            #                    set_cmd=self._set_persistent_switch,
+            #                    get_parser=int,
+            #                    val_mapping={False: 0, True: 1})
+
+            # We need to either add
+            # ,vals=vals.Bool()) to every call
+            # or to add
+            # get_parser = bool (or int) and remove the val_mapping
+            # to every call or to
+            # val_mapping={False: "0", True: "1"}
+            # and change the self._set_persistent_switch
+
+            # self.add_parameter('in_persistent_mode',
+            #                    get_cmd='PERS?',
+                                # get_parser=int,
+            #                    val_mapping={False: 0, True: 1})
+
+
+
+        #And this one causes it as well
         self.add_parameter('is_quenched',
                            get_cmd='QU?',
                            val_mapping={False: 0, True: 1})
+        #Proposed fixes, this is the easiest one to test on, since we cannot
+        # screw it up
+        # self.add_parameter('is_quenched',
+        #            get_cmd='QU?',
+        #            get_parser = int
+        #            val_mapping={False: 0, True: 1})
+
+
+
 
         self.add_function('reset_quench', call_cmd='QU 0')
         self.add_function('set_quenched', call_cmd='QU 1')
